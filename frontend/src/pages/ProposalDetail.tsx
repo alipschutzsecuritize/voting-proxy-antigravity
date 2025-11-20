@@ -31,8 +31,9 @@ export default function ProposalDetail() {
     const [proposal, setProposal] = useState<Proposal | null>(null)
     const [results, setResults] = useState<VoteResult>({ yes: 0, no: 0, abstain: 0, total: 0 })
     const [hasVoted, setHasVoted] = useState(false)
+    const [error, setError] = useState<string | null>(null)
 
-    const { data: hash, writeContract, isPending } = useWriteContract()
+    const { data: hash, writeContract, isPending, error: writeError } = useWriteContract()
     const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
         hash,
     })
@@ -80,23 +81,47 @@ export default function ProposalDetail() {
     const handleVote = (answer: number) => {
         if (!proposal || !address) return
 
-        // Trigger on-chain transaction
-        // We call registerVote(proposalId)
-        // The choice is NOT on-chain.
-        // We store the choice in backend after confirmation.
-        // But we need to pass the choice to the effect somehow.
-        // I'll use a ref or state to store the pending choice.
+        // Clear previous errors
+        setError(null)
         setPendingChoice(answer)
 
-        writeContract({
-            address: proposal.contract_address as `0x${string}`,
-            abi: GOVERNOR_ABI,
-            functionName: 'registerVote',
-            args: [BigInt(proposal.hash)],
-        })
+        console.log('Attempting to vote...')
+        console.log('Proposal:', proposal)
+        console.log('Contract Address:', proposal.contract_address)
+        console.log('Proposal Hash:', proposal.hash)
+        console.log('User Address:', address)
+
+        try {
+            writeContract({
+                address: proposal.contract_address as `0x${string}`,
+                abi: GOVERNOR_ABI,
+                functionName: 'registerVote',
+                args: [BigInt(proposal.hash)],
+                chainId: 1337, // Match MetaMask local network
+            }, {
+                onError: (err) => {
+                    console.error('Transaction error:', err)
+                    setError(err.message || 'Failed to send transaction')
+                },
+                onSuccess: (data) => {
+                    console.log('Transaction sent:', data)
+                }
+            })
+        } catch (err: any) {
+            console.error('Error calling writeContract:', err)
+            setError(err.message || 'Failed to initiate transaction')
+        }
     }
 
     const [pendingChoice, setPendingChoice] = useState<number | null>(null)
+
+    // Monitor write errors
+    useEffect(() => {
+        if (writeError) {
+            console.error('Write contract error:', writeError)
+            setError(writeError.message || 'Transaction failed')
+        }
+    }, [writeError])
 
     const recordVoteInBackend = () => {
         if (pendingChoice === null || !proposal || !address || !hash) return
@@ -170,7 +195,12 @@ export default function ProposalDetail() {
                                     Abstain
                                 </button>
                             </div>
-                            {(isPending || isConfirming) && <p style={{ marginTop: '1rem' }}>Processing transaction...</p>}
+                            {(isPending || isConfirming) && <p style={{ marginTop: '1rem', color: '#3b82f6' }}>Processing transaction...</p>}
+                            {error && (
+                                <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: 'rgba(239, 68, 68, 0.1)', borderRadius: '0.5rem', border: '1px solid #ef4444', color: '#ef4444' }}>
+                                    <strong>Error:</strong> {error}
+                                </div>
+                            )}
                         </div>
                     )
                 ) : (

@@ -14,9 +14,18 @@ contract VotingGovernor is Governor, GovernorSettings, GovernorVotes {
 
     mapping(uint256 => mapping(address => bool)) private _hasVotedTracker;
 
-    // Custom function to vote without choice
+    // Custom function to vote without choice - simplified for off-chain proposals
     function registerVote(uint256 proposalId) public returns (uint256) {
-        return _castVote(proposalId, msg.sender, 0, "");
+        require(!_hasVotedTracker[proposalId][msg.sender], "VotingGovernor: vote already cast");
+        
+        // Get voting weight at current block
+        uint256 weight = token().getVotes(msg.sender);
+        require(weight > 0, "VotingGovernor: no voting power");
+        
+        // Mark as voted
+        _hasVotedTracker[proposalId][msg.sender] = true;
+        
+        return weight;
     }
 
     function hasVoted(uint256 proposalId, address account) public view override returns (bool) {
